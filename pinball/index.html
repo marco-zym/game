@@ -230,7 +230,7 @@
     }
 
     let targetScore = getTargetFromURL();
-    targetSpan.textContent = targetScore;
+    let highScore = targetScore;
 
     let score = 0;
     let gameOver = false;
@@ -261,6 +261,8 @@
 
     let inputActive = false;
     let inputX = LOGIC_SIZE / 2;
+
+    targetSpan.textContent = targetScore;
 
     function getBallSpeedForScore() {
       let bonus = 0;
@@ -300,6 +302,15 @@
       }
     }
 
+    function updateHighScore() {
+      if (score > highScore) {
+        highScore = score;
+      }
+      const urlTarget = getTargetFromURL();
+      targetScore = Math.max(highScore, urlTarget);
+      updateTargetDisplay();
+    }
+
     function showToast(message) {
       toastEl.textContent = message;
       toastEl.classList.add('show');
@@ -324,7 +335,7 @@
       paddle.x = LOGIC_SIZE / 2;
       paddle.targetX = LOGIC_SIZE / 2;
       copyBtn.classList.remove('show');
-      updateTargetDisplay();
+      updateHighScore();
     }
 
     function resetGame() {
@@ -350,7 +361,11 @@
       if (ball.y - ball.radius > LOGIC_SIZE + 30) {
         gameOver = true;
         ball.active = false;
-        targetScore = score;
+        if (score > highScore) {
+          highScore = score;
+        }
+        const urlTarget = getTargetFromURL();
+        targetScore = Math.max(highScore, urlTarget);
         updateTargetDisplay();
         copyBtn.classList.add('show');
       }
@@ -358,8 +373,8 @@
 
     function copyScoreToClipboard() {
       const baseUrl = window.location.href.split('?')[0];
-      const newUrl = `${baseUrl}?target=${score}`;
-      const message = `我在「像素弹球·节奏方块」中获得了 ${score} 分！来挑战我吧 → ${newUrl}`;
+      const newUrl = `${baseUrl}?target=${targetScore}`;
+      const message = `我在「像素弹球·节奏方块」中获得了 ${score} 分！最高目标 ${targetScore} 分，来挑战我吧 → ${newUrl}`;
 
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(message).then(() => {
@@ -476,6 +491,12 @@
           ball.speed = getBallSpeedForScore();
           updateSpeedDisplay();
           updateTargetDisplay();
+          if (score > highScore) {
+            highScore = score;
+            const urlTarget = getTargetFromURL();
+            targetScore = Math.max(highScore, urlTarget);
+            updateTargetDisplay();
+          }
         }
       }
 
@@ -615,7 +636,7 @@
           ctx.font = '24px system-ui, sans-serif';
           ctx.fillStyle = '#ffb86b';
           ctx.shadowColor = '#ff9f6b';
-          ctx.fillText(`下局目标: ${score} 分`, LOGIC_SIZE / 2, LOGIC_SIZE / 2 + 85);
+          ctx.fillText(`目标最高分: ${targetScore}`, LOGIC_SIZE / 2, LOGIC_SIZE / 2 + 85);
         }
 
         ctx.font = '28px system-ui, sans-serif';
@@ -722,10 +743,10 @@
 
     function initGame() {
       initCanvasSize();
+      score = 0;
+      updateScoreDisplay();
       resetBall(false);
       updateTargetDisplay();
-      updateScoreDisplay();
-      updateSpeedDisplay();
       gameLoop();
     }
 
