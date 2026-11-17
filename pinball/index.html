@@ -374,7 +374,7 @@
     function copyScoreToClipboard() {
       const baseUrl = window.location.href.split('?')[0];
       const newUrl = `${baseUrl}?target=${targetScore}`;
-      const message = `我在「像素弹球·节奏方块」中获得了 ${score} 分！最高目标 ${targetScore} 分，来挑战我吧 → ${newUrl}`;
+      const message = `我在「弹球游戏」中获得了 ${score} 分！最高目标 ${targetScore} 分，来挑战我吧 → ${newUrl}`;
 
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(message).then(() => {
