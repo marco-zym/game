@@ -20,7 +20,7 @@
       align-items: center;
       justify-content: center;
       font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
-      touch-action: pan-y;
+      touch-action: pan-y;  
     }
     .game-wrapper {
       display: flex;
@@ -224,6 +224,8 @@
     const MOVE_ANIM_DURATION = 120;
     const MERGE_ANIM_DURATION = 200;
 
+    const STORAGE_KEY = 'highScore';
+
     const COLORS = {
       bg: '#191b2e',
       gridLine: '#2a2d4a',
@@ -255,9 +257,25 @@
     let animating = false;
     let animationStartTime = 0;
     let animationDuration = 0;
-    let moveAnimations = [];
+    let mergePositions = [];
 
-    let prevBoard = [];
+    function loadBestScore() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        bestScore = saved !== null ? (parseInt(saved) || 0) : 0;
+      } catch (e) {
+        bestScore = 0;
+      }
+      bestSpan.textContent = bestScore;
+    }
+
+    function saveBestScore(value) {
+      if (value > bestScore) {
+        bestScore = value;
+        try { localStorage.setItem(STORAGE_KEY, bestScore); } catch (e) {}
+        bestSpan.textContent = bestScore;
+      }
+    }
 
     function getTargetFromURL() {
       const params = new URLSearchParams(window.location.search);
@@ -265,23 +283,14 @@
       if (target !== null && !isNaN(parseInt(target))) {
         return Math.max(0, parseInt(target));
       }
-      return 0;
+      return null;
     }
 
-    targetScore = getTargetFromURL();
-    targetSpan.textContent = targetScore;
-
-    try {
-      const savedBest = localStorage.getItem('neon2048_best');
-      if (savedBest) {
-        bestScore = parseInt(savedBest) || 0;
-        bestSpan.textContent = bestScore;
-      }
-    } catch (e) {}
-
-    function getTileColor(value) {
-      if (value === 0) return COLORS.emptyCell;
-      return COLORS[value] || COLORS.fallback;
+    function initTargetScore() {
+      const urlTarget = getTargetFromURL();
+      targetScore = urlTarget !== null ? urlTarget : bestScore;
+      targetSpan.textContent = targetScore;
+      updateTargetDisplay();
     }
 
     function updateTargetDisplay() {
@@ -295,52 +304,40 @@
 
     function updateScoreUI() {
       scoreSpan.textContent = score;
-      if (score > bestScore) {
-        bestScore = score;
-        try { localStorage.setItem('neon2048_best', bestScore); } catch (e) {}
-      }
-      bestSpan.textContent = bestScore;
-      if (score > highScore) {
-        highScore = score;
-      }
+      if (score > bestScore) saveBestScore(score);
+      if (score > highScore) highScore = score;
       const urlTarget = getTargetFromURL();
-      targetScore = Math.max(highScore, urlTarget);
+      targetScore = urlTarget !== null
+        ? Math.max(highScore, urlTarget, bestScore)
+        : Math.max(highScore, bestScore);
       updateTargetDisplay();
     }
 
     function showToast(message) {
       toastEl.textContent = message;
       toastEl.classList.add('show');
-      setTimeout(() => {
-        toastEl.classList.remove('show');
-      }, 2000);
+      setTimeout(() => toastEl.classList.remove('show'), 2000);
     }
 
     function initBoard() {
       board = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
-      prevBoard = board.map(row => [...row]);
     }
 
     function addRandomTile() {
       const empty = [];
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
+      for (let r = 0; r < GRID_SIZE; r++)
+        for (let c = 0; c < GRID_SIZE; c++)
           if (board[r][c] === 0) empty.push({ r, c });
-        }
-      }
       if (empty.length === 0) return false;
       const { r, c } = empty[Math.floor(Math.random() * empty.length)];
-      const value = Math.random() < 0.9 ? 2 : 4;
-      board[r][c] = value;
+      board[r][c] = Math.random() < 0.9 ? 2 : 4;
       return true;
     }
 
     function checkGameOver() {
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
+      for (let r = 0; r < GRID_SIZE; r++)
+        for (let c = 0; c < GRID_SIZE; c++)
           if (board[r][c] === 0) return false;
-        }
-      }
       for (let r = 0; r < GRID_SIZE; r++) {
         for (let c = 0; c < GRID_SIZE; c++) {
           const val = board[r][c];
@@ -351,35 +348,13 @@
       return true;
     }
 
-    function buildTilesFromBoard() {
-      tiles = [];
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-          const value = board[r][c];
-          if (value !== 0) {
-            tiles.push({
-              value,
-              row: r,
-              col: c,
-              renderRow: r,
-              renderCol: c,
-              isNew: false,
-              mergeScale: 1.0,
-              mergeTime: 0
-            });
-          }
-        }
-      }
-    }
-
     function move(direction) {
       if (gameOver || animating) return false;
 
       const oldBoard = board.map(row => [...row]);
       let moved = false;
       let totalScoreGain = 0;
-
-      let mergePositions = [];
+      mergePositions = [];
 
       function processLine(line) {
         let nonZero = line.filter(v => v !== 0);
@@ -413,11 +388,7 @@
             if (board[r][c] !== newLine[r]) moved = true;
             board[r][c] = newLine[r];
           }
-          merges.forEach(m => {
-            if (newLine[m.index] !== 0) {
-              mergePositions.push({ row: m.index, col: c, value: newLine[m.index] });
-            }
-          });
+          merges.forEach(m => { if (newLine[m.index] !== 0) mergePositions.push({ row: m.index, col: c, value: newLine[m.index] }); });
         }
       } else if (direction === 1) {
         for (let r = 0; r < GRID_SIZE; r++) {
@@ -431,9 +402,7 @@
           }
           merges.forEach(m => {
             const col = GRID_SIZE - 1 - m.index;
-            if (reversedBack[col] !== 0) {
-              mergePositions.push({ row: r, col, value: reversedBack[col] });
-            }
+            if (reversedBack[col] !== 0) mergePositions.push({ row: r, col, value: reversedBack[col] });
           });
         }
       } else if (direction === 2) {
@@ -449,9 +418,7 @@
           }
           merges.forEach(m => {
             const row = GRID_SIZE - 1 - m.index;
-            if (reversedBack[row] !== 0) {
-              mergePositions.push({ row, col: c, value: reversedBack[row] });
-            }
+            if (reversedBack[row] !== 0) mergePositions.push({ row, col: c, value: reversedBack[row] });
           });
         }
       } else if (direction === 3) {
@@ -463,11 +430,7 @@
             if (board[r][c] !== newLine[c]) moved = true;
             board[r][c] = newLine[c];
           }
-          merges.forEach(m => {
-            if (newLine[m.index] !== 0) {
-              mergePositions.push({ row: r, col: m.index, value: newLine[m.index] });
-            }
-          });
+          merges.forEach(m => { if (newLine[m.index] !== 0) mergePositions.push({ row: r, col: m.index, value: newLine[m.index] }); });
         }
       }
 
@@ -475,19 +438,12 @@
 
       score += totalScoreGain;
       updateScoreUI();
-
       addRandomTile();
 
       if (!won) {
-        for (let r = 0; r < GRID_SIZE; r++) {
-          for (let c = 0; c < GRID_SIZE; c++) {
-            if (board[r][c] === 2048) {
-              won = true;
-              showToast('🎉 恭喜合成 2048！继续挑战吧');
-              break;
-            }
-          }
-        }
+        outer: for (let r = 0; r < GRID_SIZE; r++)
+          for (let c = 0; c < GRID_SIZE; c++)
+            if (board[r][c] === 2048) { won = true; showToast('🎉 恭喜合成 2048！继续挑战吧'); break outer; }
       }
 
       if (checkGameOver()) {
@@ -495,67 +451,32 @@
         copyBtn.classList.add('show');
       }
 
-      function findSourcePosition(finalRow, finalCol, finalValue, oldBoard, direction) {
-        if (direction === 0) {
-          for (let r = finalRow; r < GRID_SIZE; r++) {
-            if (oldBoard[r][finalCol] === finalValue) {
-              return { row: r, col: finalCol };
-            }
-          }
-        } else if (direction === 1) {
-          for (let c = finalCol; c >= 0; c--) {
-            if (oldBoard[finalRow][c] === finalValue) {
-              return { row: finalRow, col: c };
-            }
-          }
-        } else if (direction === 2) {
-          for (let r = finalRow; r >= 0; r--) {
-            if (oldBoard[r][finalCol] === finalValue) {
-              return { row: r, col: finalCol };
-            }
-          }
-        } else if (direction === 3) {
-          for (let c = finalCol; c < GRID_SIZE; c++) {
-            if (oldBoard[finalRow][c] === finalValue) {
-              return { row: finalRow, col: c };
-            }
-          }
-        }
-        return { row: finalRow, col: finalCol };
+      function findSourcePosition(fr, fc, fv, oldB, dir) {
+        if (dir === 0) { for (let r = fr; r < GRID_SIZE; r++) if (oldB[r][fc] === fv) return { row: r, col: fc }; }
+        else if (dir === 1) { for (let c = fc; c >= 0; c--) if (oldB[fr][c] === fv) return { row: fr, col: c }; }
+        else if (dir === 2) { for (let r = fr; r >= 0; r--) if (oldB[r][fc] === fv) return { row: r, col: fc }; }
+        else if (dir === 3) { for (let c = fc; c < GRID_SIZE; c++) if (oldB[fr][c] === fv) return { row: fr, col: c }; }
+        return { row: fr, col: fc };
       }
 
       tiles = [];
       const now = performance.now();
-      const animDuration = MOVE_ANIM_DURATION;
-
       for (let r = 0; r < GRID_SIZE; r++) {
         for (let c = 0; c < GRID_SIZE; c++) {
           const value = board[r][c];
           if (value === 0) continue;
-
           let source = findSourcePosition(r, c, value, oldBoard, direction);
-          if (oldBoard[source.row][source.col] !== value) {
-            source = { row: r, col: c };
-          }
-
+          if (oldBoard[source.row][source.col] !== value) source = { row: r, col: c };
           const isMergeResult = mergePositions.some(m => m.row === r && m.col === c && m.value === value);
-
           tiles.push({
-            value,
-            row: r,
-            col: c,
-            fromRow: source.row,
-            fromCol: source.col,
-            renderRow: source.row,
-            renderCol: source.col,
-            isNew: false,
-            isMerge: isMergeResult,
-            startTime: now,
-            mergeScale: 1.0
+            value, row: r, col: c,
+            fromRow: source.row, fromCol: source.col,
+            renderRow: source.row, renderCol: source.col,
+            isNew: false, isMerge: isMergeResult,
+            startTime: now
           });
         }
       }
-
       for (let r = 0; r < GRID_SIZE; r++) {
         for (let c = 0; c < GRID_SIZE; c++) {
           if (oldBoard[r][c] === 0 && board[r][c] !== 0) {
@@ -563,10 +484,8 @@
             if (tile) {
               tile.isNew = true;
               tile.startTime = now;
-              tile.fromRow = r;
-              tile.fromCol = c;
-              tile.renderRow = r;
-              tile.renderCol = c;
+              tile.fromRow = r; tile.fromCol = c;
+              tile.renderRow = r; tile.renderCol = c;
             }
           }
         }
@@ -578,13 +497,7 @@
 
       setTimeout(() => {
         animating = false;
-        tiles.forEach(t => {
-          t.renderRow = t.row;
-          t.renderCol = t.col;
-          t.isMerge = false;
-          t.isNew = false;
-        });
-        buildTilesFromBoard();
+        tiles = [];
       }, animationDuration + 10);
 
       return true;
@@ -598,11 +511,15 @@
       gameOver = false;
       won = false;
       animating = false;
+      tiles = [];
       mergePositions = [];
       copyBtn.classList.remove('show');
+
+      const urlTarget = getTargetFromURL();
+      targetScore = urlTarget !== null ? urlTarget : bestScore;
+
       updateScoreUI();
       updateTargetDisplay();
-      buildTilesFromBoard();
       targetBoard.classList.remove('highlight');
     }
 
@@ -612,11 +529,7 @@
       const message = `我在「2048」中获得了 ${score} 分！最高目标 ${targetScore} 分，来挑战我吧 → ${newUrl}`;
 
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(message).then(() => {
-          showToast('战绩已复制！快去分享吧');
-        }).catch(() => {
-          fallbackCopy(message);
-        });
+        navigator.clipboard.writeText(message).then(() => showToast('战绩已复制！快去分享吧')).catch(() => fallbackCopy(message));
       } else {
         fallbackCopy(message);
       }
@@ -627,31 +540,65 @@
       textarea.value = text;
       textarea.style.position = 'fixed';
       textarea.style.left = '-9999px';
-      textarea.style.top = '0';
       document.body.appendChild(textarea);
       textarea.focus();
       textarea.select();
       try {
-        const success = document.execCommand('copy');
-        if (success) {
-          showToast('战绩已复制！快去分享吧');
-        } else {
-          showToast('复制失败，请手动截图分享');
-        }
+        if (document.execCommand('copy')) showToast('战绩已复制！快去分享吧');
+        else showToast('复制失败，请手动截图分享');
       } catch (err) {
         showToast('复制失败，请手动截图分享');
       }
       document.body.removeChild(textarea);
     }
 
-    copyBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      copyScoreToClipboard();
-    });
+    copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyScoreToClipboard(); });
+
+    function drawTile(x, y, w, h, value, scale) {
+      const colorSet = getTileColor(value);
+      const centerX = x + w / 2;
+      const centerY = y + h / 2;
+
+      ctx.save();
+      if (scale !== 1.0) {
+        ctx.translate(centerX, centerY);
+        ctx.scale(scale, scale);
+        ctx.translate(-centerX, -centerY);
+      }
+
+      ctx.shadowColor = '#6d8cff';
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = colorSet.bg;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, TILE_RADIUS);
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#ffffff30';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(x + 2, y + 2, w - 4, h - 4, TILE_RADIUS - 2);
+      ctx.stroke();
+
+      ctx.shadowColor = '#00000080';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = colorSet.text;
+      ctx.font = `bold ${value >= 1000 ? 36 : value >= 100 ? 44 : 52}px system-ui, 'Segoe UI', Roboto, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(value, centerX, centerY);
+
+      ctx.restore();
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+    }
+
+    function getTileColor(value) {
+      return COLORS[value] || COLORS.fallback;
+    }
 
     function draw() {
       ctx.clearRect(0, 0, LOGIC_SIZE, LOGIC_SIZE);
-
       ctx.fillStyle = COLORS.bg;
       ctx.fillRect(0, 0, LOGIC_SIZE, LOGIC_SIZE);
 
@@ -659,14 +606,8 @@
       ctx.lineWidth = 1;
       for (let i = 0; i <= GRID_SIZE; i++) {
         const pos = i * CELL_SIZE;
-        ctx.beginPath();
-        ctx.moveTo(pos, 0);
-        ctx.lineTo(pos, LOGIC_SIZE);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, pos);
-        ctx.lineTo(LOGIC_SIZE, pos);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pos, 0); ctx.lineTo(pos, LOGIC_SIZE); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, pos); ctx.lineTo(LOGIC_SIZE, pos); ctx.stroke();
       }
 
       for (let r = 0; r < GRID_SIZE; r++) {
@@ -686,76 +627,53 @@
         }
       }
 
-      const now = performance.now();
-      const animProgress = animating ? Math.min(1, (now - animationStartTime) / animationDuration) : 1;
-
-      for (const tile of tiles) {
-        if (tile.value === 0) continue;
-
-        let renderRow, renderCol;
-        let scale = 1.0;
-
-        if (animating && !tile.isNew && !tile.isMerge) {
-          const t = Math.min(1, (now - tile.startTime) / MOVE_ANIM_DURATION);
-          const easeT = 1 - Math.pow(1 - t, 3);
-          renderRow = tile.fromRow + (tile.row - tile.fromRow) * easeT;
-          renderCol = tile.fromCol + (tile.col - tile.fromCol) * easeT;
-        } else if (animating && tile.isNew) {
-          const t = Math.min(1, (now - tile.startTime) / 250);
-          scale = t < 0.5 ? t * 2 : 1;
-          renderRow = tile.row;
-          renderCol = tile.col;
-        } else if (animating && tile.isMerge) {
-          const t = Math.min(1, (now - tile.startTime) / MERGE_ANIM_DURATION);
-          const bounce = Math.sin(t * Math.PI) * 0.15;
-          scale = 1.0 + bounce;
-          renderRow = tile.row;
-          renderCol = tile.col;
-        } else {
-          renderRow = tile.row;
-          renderCol = tile.col;
+      if (!animating) {
+        for (let r = 0; r < GRID_SIZE; r++) {
+          for (let c = 0; c < GRID_SIZE; c++) {
+            const value = board[r][c];
+            if (value === 0) continue;
+            const x = c * CELL_SIZE + CELL_PADDING / 2;
+            const y = r * CELL_SIZE + CELL_PADDING / 2;
+            const w = CELL_SIZE - CELL_PADDING;
+            const h = CELL_SIZE - CELL_PADDING;
+            drawTile(x, y, w, h, value, 1.0);
+          }
         }
+      } else {
+        const now = performance.now();
+        for (const tile of tiles) {
+          if (tile.value === 0) continue;
 
-        const value = tile.value;
-        const colorSet = getTileColor(value);
+          let renderRow, renderCol, scale = 1.0;
 
-        const x = renderCol * CELL_SIZE + CELL_PADDING / 2;
-        const y = renderRow * CELL_SIZE + CELL_PADDING / 2;
-        const w = CELL_SIZE - CELL_PADDING;
-        const h = CELL_SIZE - CELL_PADDING;
+          if (tile.isNew) {
+            const t = Math.min(1, (now - tile.startTime) / 250);
+            scale = t < 0.5 ? t * 2 : 1;
+            renderRow = tile.row;
+            renderCol = tile.col;
+          } else if (tile.isMerge) {
+            const t = Math.min(1, (now - tile.startTime) / MERGE_ANIM_DURATION);
+            scale = 1.0 + Math.sin(t * Math.PI) * 0.15;
+            renderRow = tile.row;
+            renderCol = tile.col;
+          } else {
+            const t = Math.min(1, (now - tile.startTime) / MOVE_ANIM_DURATION);
+            const easeT = 1 - Math.pow(1 - t, 3);
+            renderRow = tile.fromRow + (tile.row - tile.fromRow) * easeT;
+            renderCol = tile.fromCol + (tile.col - tile.fromCol) * easeT;
+          }
 
-        const centerX = x + w / 2;
-        const centerY = y + h / 2;
+          if (isNaN(renderRow) || isNaN(renderCol)) {
+            renderRow = tile.row;
+            renderCol = tile.col;
+          }
 
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        ctx.scale(scale, scale);
-        ctx.translate(-centerX, -centerY);
-
-        ctx.shadowColor = '#6d8cff';
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = colorSet.bg;
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, h, TILE_RADIUS);
-        ctx.fill();
-
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#ffffff30';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.roundRect(x + 2, y + 2, w - 4, h - 4, TILE_RADIUS - 2);
-        ctx.stroke();
-
-        ctx.shadowColor = '#00000080';
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = colorSet.text;
-        ctx.font = `bold ${value >= 1000 ? 36 : value >= 100 ? 44 : 52}px system-ui, 'Segoe UI', Roboto, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(value, centerX, centerY);
-
-        ctx.restore();
-        ctx.shadowBlur = 0;
+          const x = renderCol * CELL_SIZE + CELL_PADDING / 2;
+          const y = renderRow * CELL_SIZE + CELL_PADDING / 2;
+          const w = CELL_SIZE - CELL_PADDING;
+          const h = CELL_SIZE - CELL_PADDING;
+          drawTile(x, y, w, h, tile.value, scale);
+        }
       }
 
       if (gameOver) {
@@ -786,7 +704,6 @@
         ctx.fillStyle = '#bbccff';
         ctx.shadowBlur = 12;
         ctx.fillText('点击屏幕重新开始', LOGIC_SIZE / 2, LOGIC_SIZE / 2 + 140);
-
         ctx.shadowBlur = 0;
       }
 
@@ -812,15 +729,11 @@
       };
     }
 
-    let touchStartX = 0, touchStartY = 0;
-    let touchMoved = false;
+    let touchStartX = 0, touchStartY = 0, touchMoved = false;
 
     function handlePointerDown(e) {
       e.preventDefault();
-      if (gameOver) {
-        resetGame();
-        return;
-      }
+      if (gameOver) { resetGame(); return; }
       if (e.touches) {
         if (e.touches.length > 0) {
           touchStartX = e.touches[0].clientX;
@@ -834,14 +747,11 @@
       }
     }
 
-    function handlePointerMove(e) {
-      e.preventDefault();
-    }
+    function handlePointerMove(e) { e.preventDefault(); }
 
     function handlePointerUp(e) {
       e.preventDefault();
-      if (gameOver || animating) return;
-      if (touchMoved) return;
+      if (gameOver || animating || touchMoved) return;
 
       let endX, endY;
       if (e.changedTouches) {
@@ -854,19 +764,10 @@
 
       const dx = endX - touchStartX;
       const dy = endY - touchStartY;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
 
-      const threshold = 30;
-      if (Math.max(absDx, absDy) < threshold) return;
-
-      if (absDx > absDy) {
-        if (dx > 0) move(1);
-        else move(3);
-      } else {
-        if (dy > 0) move(2);
-        else move(0);
-      }
+      if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? 1 : 3);
+      else move(dy > 0 ? 2 : 0);
       touchMoved = true;
     }
 
@@ -882,10 +783,7 @@
 
     window.addEventListener('keydown', (e) => {
       if (gameOver) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          resetGame();
-          e.preventDefault();
-        }
+        if (e.key === 'Enter' || e.key === ' ') { resetGame(); e.preventDefault(); }
         return;
       }
       if (animating) return;
@@ -894,7 +792,6 @@
         case 'ArrowRight': move(1); e.preventDefault(); break;
         case 'ArrowDown':  move(2); e.preventDefault(); break;
         case 'ArrowLeft':  move(3); e.preventDefault(); break;
-        default: break;
       }
     });
 
@@ -910,13 +807,13 @@
 
     function initGame() {
       initCanvasSize();
+      loadBestScore();
+      initTargetScore();
       resetGame();
       gameLoop();
     }
 
-    window.addEventListener('load', () => {
-      initGame();
-    });
+    window.addEventListener('load', () => initGame());
 
   })();
 </script>
