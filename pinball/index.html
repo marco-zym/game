@@ -219,6 +219,23 @@
     const copyBtn = document.getElementById('copyBtn');
 
     const LOGIC_SIZE = 600;
+    const LS_KEY = 'highScore';
+
+    function getStoredHighScore() {
+      try {
+        const val = localStorage.getItem(LS_KEY);
+        if (val !== null && !isNaN(parseInt(val))) {
+          return Math.max(0, parseInt(val));
+        }
+      } catch (e) {}
+      return 0;
+    }
+
+    function saveHighScoreToStorage(value) {
+      try {
+        localStorage.setItem(LS_KEY, value.toString());
+      } catch (e) {}
+    }
 
     function getTargetFromURL() {
       const params = new URLSearchParams(window.location.search);
@@ -226,11 +243,15 @@
       if (target !== null && !isNaN(parseInt(target))) {
         return Math.max(0, parseInt(target));
       }
-      return 0;
+      return null;
     }
 
-    let targetScore = getTargetFromURL();
-    let highScore = targetScore;
+    let urlTarget = getTargetFromURL();
+    let storedHighScore = getStoredHighScore();
+
+    let targetScore = urlTarget !== null ? urlTarget : storedHighScore;
+
+    let highScore = Math.max(storedHighScore, targetScore);
 
     let score = 0;
     let gameOver = false;
@@ -305,9 +326,14 @@
     function updateHighScore() {
       if (score > highScore) {
         highScore = score;
+        saveHighScoreToStorage(highScore);
       }
-      const urlTarget = getTargetFromURL();
-      targetScore = Math.max(highScore, urlTarget);
+      const currentUrlTarget = getTargetFromURL();
+      if (currentUrlTarget !== null) {
+        targetScore = Math.max(highScore, currentUrlTarget);
+      } else {
+        targetScore = highScore;
+      }
       updateTargetDisplay();
     }
 
@@ -363,9 +389,14 @@
         ball.active = false;
         if (score > highScore) {
           highScore = score;
+          saveHighScoreToStorage(highScore);
         }
-        const urlTarget = getTargetFromURL();
-        targetScore = Math.max(highScore, urlTarget);
+        const currentUrlTarget = getTargetFromURL();
+        if (currentUrlTarget !== null) {
+          targetScore = Math.max(highScore, currentUrlTarget);
+        } else {
+          targetScore = highScore;
+        }
         updateTargetDisplay();
         copyBtn.classList.add('show');
       }
@@ -490,13 +521,17 @@
           updateScoreDisplay();
           ball.speed = getBallSpeedForScore();
           updateSpeedDisplay();
-          updateTargetDisplay();
           if (score > highScore) {
             highScore = score;
-            const urlTarget = getTargetFromURL();
-            targetScore = Math.max(highScore, urlTarget);
-            updateTargetDisplay();
+            saveHighScoreToStorage(highScore);
           }
+          const currentUrlTarget = getTargetFromURL();
+          if (currentUrlTarget !== null) {
+            targetScore = Math.max(highScore, currentUrlTarget);
+          } else {
+            targetScore = highScore;
+          }
+          updateTargetDisplay();
         }
       }
 
